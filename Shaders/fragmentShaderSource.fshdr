@@ -1,0 +1,194 @@
+#version 450 core
+
+in vec2 texCoord;
+in vec3 normal;
+in vec3 worldSpaceVertex;
+
+struct Material {
+
+	vec3 ambient;
+	vec3 diffuse;
+	vec3 specular;
+	sampler2D diffuseMap[2];
+	sampler2D specularMap;
+	sampler2D emissiveMap;
+	float shininess;
+
+};
+
+struct DirectionalLight {
+
+	vec3 dir;
+
+	vec3 ambient;
+	vec3 diffuse;
+	vec3 specular;
+
+};
+
+struct PointLight {
+
+	vec3 pos;
+
+	vec3 ambient;
+	vec3 diffuse;
+	vec3 specular;
+	
+	//for attenuation purposes
+	float constant;
+	float linear;
+	float quadratic;
+
+};
+
+struct Spotlight {
+
+	vec3 pos;
+
+	vec3 ambient;
+	vec3 diffuse;
+	vec3 specular;
+
+	//for attenuation purposes
+	float constant;
+	float linear;
+	float quadratic;
+
+	//for spotlight intensity purposes
+	vec3 lookDir;
+	float innerCutoff;
+	float outerCutoff;
+
+};
+
+uniform Material material;
+
+uniform int numDirectionalLights;
+uniform int numPointLights;
+uniform int numSpotlights;
+
+uniform DirectionalLight directionalLightArr[10];
+uniform PointLight pointLightArr[10];
+uniform Spotlight spotlightArr[10];
+
+uniform float mixAmount;
+uniform vec3 cameraPos;
+uniform float time;
+
+out vec4 FragColor;
+
+vec3 processDirectionalLight(DirectionalLight light);
+vec3 processPointLight(PointLight light);
+vec3 processSpotlight(Spotlight light);
+
+void main() {
+
+	vec3 combinedLight;
+
+	for (int i = 0; i < numDirectionalLights; i++) {
+		combinedLight += processDirectionalLight(directionalLightArr[i]);
+	}
+
+	for (int j = 0; j < numPointLights; j++) {
+		combinedLight += processPointLight(pointLightArr[j]);
+	}
+
+	for (int k = 0; k < numSpotlights; k++) {
+		combinedLight += processSpotlight(spotlightArr[k]);
+	}
+
+	vec3 emissive = vec3(texture(material.emissiveMap, texCoord));
+
+	FragColor = vec4(combinedLight + emissive, 1.0f);
+
+}
+
+vec3 processDirectionalLight(DirectionalLight light) {
+
+	vec3 norm = normalize(normal);
+	light.dir = -normalize(light.dir);
+	float lightIntensity = max(dot(norm, light.dir), 0.0);
+
+	vec3 reflectDir, cameraDir;
+	float specularSharpness, specularIntensity;
+	if (lightIntensity != 0.0) {	//avoids problem of seeing a specular reflection where there should be none
+		reflectDir = reflect(-light.dir, norm);
+		cameraDir = normalize(cameraPos - worldSpaceVertex);
+		specularSharpness = pow(max(dot(cameraDir, reflectDir), 0.0), material.shininess);
+		specularIntensity = max(dot(reflectDir, cameraPos), 0.0);
+	}
+
+	vec3 ambient = light.ambient * material.ambient * vec3(mix(texture(material.diffuseMap[0], texCoord), texture(material.diffuseMap[1], texCoord), 0.5));
+	vec3 diffuse = lightIntensity * light.diffuse * vec3(mix(texture(material.diffuseMap[0], texCoord), texture(material.diffuseMap[1], texCoord), 0.5));
+	vec3 specular = lightIntensity * specularIntensity * specularSharpness * light.specular * vec3(texture(material.specularMap, texCoord));
+
+	return (ambient + diffuse + specular);
+
+}
+
+vec3 processPointLight(PointLight light) {
+
+	//diffuse
+	vec3 norm = normalize(normal);
+	vec3 lightRay = normalize(light.pos - worldSpaceVertex); //direction from vertex to light
+	float lightIntensity = max(dot(norm, lightRay), 0.0);
+
+	//specular
+	vec3 reflectDir, cameraDir;
+	float specularSharpness, specularIntensity;
+	if (lightIntensity != 0.0) {	//avoids problem of seeing a specular reflection where there should be none
+		reflectDir = reflect(-lightRay, norm);
+		cameraDir = normalize(cameraPos - worldSpaceVertex); //direction from vertex to camera
+		specularSharpness = pow(max(dot(cameraDir, reflectDir), 0.0), material.shininess);
+		specularIntensity = max(dot(reflectDir, cameraPos), 0.0);
+	}
+
+	vec3 ambient = light.ambient * material.ambient * vec3(mix(texture(material.diffuseMap[0], texCoord), texture(material.diffuseMap[1], texCoord), 0.5));
+	vec3 diffuse = lightIntensity * light.diffuse * vec3(mix(texture(material.diffuseMap[0], texCoord), texture(material.diffuseMap[1], texCoord), 0.5));
+	vec3 specular = lightIntensity * specularIntensity * specularSharpness * light.specular * vec3(texture(material.specularMap, texCoord));
+
+	//attenuation = 1 / (K2 * d^2 + K1 * d^1 + K0)
+	float distance = length(light.pos - worldSpaceVertex);
+	float attenuation = 1.0 / (light.quadratic * pow(distance, 2.0) + light.linear * distance + light.constant);
+
+	diffuse *= attenuation;
+	specular *= attenuation;
+
+	return (ambient + diffuse + specular);
+
+}
+
+vec3 processSpotlight(Spotlight light) {
+
+	vec3 norm = normalize(normal);
+	vec3 lightRay = normalize(light.pos - worldSpaceVertex); //direction from vertex to light
+	light.lookDir = -normalize(light.lookDir);
+
+	vec3 ambient = light.ambient * material.ambient * vec3(mix(texture(material.diffuseMap[0], texCoord), texture(material.diffuseMap[1], texCoord), 0.5));
+	vec3 diffuse;
+	vec3 specular;
+
+	if (dot(light.lookDir, lightRay) > light.outerCutoff) {
+		
+		float theta = max(dot(light.lookDir, lightRay), 0.0);
+		float lightIntensity = clamp((theta - light.outerCutoff) / (light.innerCutoff - light.outerCutoff), 0.0, 1.0);
+		diffuse = lightIntensity * light.diffuse * vec3(mix(texture(material.diffuseMap[0], texCoord), texture(material.diffuseMap[1], texCoord), 0.5));
+
+		vec3 reflectDir = reflect(-lightRay, norm);
+		vec3 cameraDir = normalize(cameraPos - worldSpaceVertex); //direction from vertex to camera
+		float specularSharpness = pow(max(dot(cameraDir, reflectDir), 0.0), material.shininess);
+		float specularIntensity = max(dot(reflectDir, cameraPos), 0.0);
+		specular = lightIntensity * specularIntensity * specularSharpness * light.specular * vec3(texture(material.specularMap, texCoord));
+
+		//attenuation = 1 / (K2 * d^2 + K1 * d^1 + K0)
+		float distance = length(light.pos - worldSpaceVertex);
+		float attenuation = 1.0 / (light.quadratic * pow(distance, 2.0) + light.linear * distance + light.constant);
+
+		diffuse *= attenuation;
+		specular *= attenuation;
+
+	}
+
+	return (ambient + diffuse + specular);
+
+}
