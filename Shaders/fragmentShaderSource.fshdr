@@ -4,8 +4,8 @@ in vec2 texCoord;
 in vec3 normal;
 in vec3 worldSpaceVertex;
 
-struct Material {
-
+struct Material 
+{
 	vec3 ambient;
 	vec3 diffuse;
 	vec3 specular;
@@ -13,21 +13,19 @@ struct Material {
 	sampler2D specularMap;
 	sampler2D emissiveMap;
 	float shininess;
-
 };
 
-struct DirectionalLight {
-
+struct DirectionalLight 
+{
 	vec3 dir;
 
 	vec3 ambient;
 	vec3 diffuse;
 	vec3 specular;
-
 };
 
-struct PointLight {
-
+struct PointLight 
+{
 	vec3 pos;
 
 	vec3 ambient;
@@ -38,11 +36,10 @@ struct PointLight {
 	float constant;
 	float linear;
 	float quadratic;
-
 };
 
-struct Spotlight {
-
+struct Spotlight 
+{
 	vec3 pos;
 
 	vec3 ambient;
@@ -58,7 +55,6 @@ struct Spotlight {
 	vec3 lookDir;
 	float innerCutoff;
 	float outerCutoff;
-
 };
 
 uniform Material material;
@@ -81,30 +77,26 @@ vec3 processDirectionalLight(DirectionalLight light);
 vec3 processPointLight(PointLight light);
 vec3 processSpotlight(Spotlight light);
 
-void main() {
-
+void main() 
+{
 	vec3 combinedLight;
 
 	for (int i = 0; i < numDirectionalLights; i++) {
 		combinedLight += processDirectionalLight(directionalLightArr[i]);
 	}
-
 	for (int j = 0; j < numPointLights; j++) {
 		combinedLight += processPointLight(pointLightArr[j]);
 	}
-
 	for (int k = 0; k < numSpotlights; k++) {
 		combinedLight += processSpotlight(spotlightArr[k]);
 	}
-
 	vec3 emissive = vec3(texture(material.emissiveMap, texCoord));
 
 	FragColor = vec4(combinedLight + emissive, 1.0f);
-
 }
 
-vec3 processDirectionalLight(DirectionalLight light) {
-
+vec3 processDirectionalLight(DirectionalLight light)
+{
 	vec3 norm = normalize(normal);
 	light.dir = -normalize(light.dir);
 	float lightIntensity = max(dot(norm, light.dir), 0.0);
@@ -123,11 +115,10 @@ vec3 processDirectionalLight(DirectionalLight light) {
 	vec3 specular = lightIntensity * specularIntensity * specularSharpness * light.specular * vec3(texture(material.specularMap, texCoord));
 
 	return (ambient + diffuse + specular);
-
 }
 
-vec3 processPointLight(PointLight light) {
-
+vec3 processPointLight(PointLight light) 
+{
 	//diffuse
 	vec3 norm = normalize(normal);
 	vec3 lightRay = normalize(light.pos - worldSpaceVertex); //direction from vertex to light
@@ -155,11 +146,10 @@ vec3 processPointLight(PointLight light) {
 	specular *= attenuation;
 
 	return (ambient + diffuse + specular);
-
 }
 
-vec3 processSpotlight(Spotlight light) {
-
+vec3 processSpotlight(Spotlight light) 
+{
 	vec3 norm = normalize(normal);
 	vec3 lightRay = normalize(light.pos - worldSpaceVertex); //direction from vertex to light
 	light.lookDir = -normalize(light.lookDir);
@@ -169,7 +159,6 @@ vec3 processSpotlight(Spotlight light) {
 	vec3 specular;
 
 	if (dot(light.lookDir, lightRay) > light.outerCutoff) {
-		
 		float theta = max(dot(light.lookDir, lightRay), 0.0);
 		float lightIntensity = clamp((theta - light.outerCutoff) / (light.innerCutoff - light.outerCutoff), 0.0, 1.0);
 		diffuse = lightIntensity * light.diffuse * vec3(mix(texture(material.diffuseMap[0], texCoord), texture(material.diffuseMap[1], texCoord), 0.5));
@@ -186,9 +175,7 @@ vec3 processSpotlight(Spotlight light) {
 
 		diffuse *= attenuation;
 		specular *= attenuation;
-
 	}
-
+	
 	return (ambient + diffuse + specular);
-
 }
